@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Fanbox Batch Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.2
+// @version      0.21
 // @description  Batch Download on creator, not post
 // @author       https://github.com/amarillys
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.2.2/jszip.min.js
@@ -60,7 +60,7 @@
         let waittime = 0
         zip.file('cover.jpg', await gmRequireImage(creatorInfo.cover), { compression: "STORE" })
         for (let i = 0, p = creatorInfo.posts; i < p.length; ++i) {
-            let folder = p[i].title
+            let folder = `${p[i].title}-${p[i].id}`
             if (!p[i].body) continue
             let images = p[i].body.images
             if (!images) continue
