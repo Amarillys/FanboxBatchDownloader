@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Fanbox Batch Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.3
+// @version      0.32
 // @description  Batch Download on creator, not post
 // @author       https://github.com/amarillys
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.2.2/jszip.min.js
@@ -11,14 +11,15 @@
 // ==/UserScript==
 
 /**
- * Github:　https://github.com/Amarillys/FanboxBatchDownloader
  * Update Log
  *  > 191223
  *    Add support of files
+ *    Improve the detect of file extension
  *    Change Download Request as await, for avoiding delaying.
  *    Add manual package while click button use middle button of mouse
  *    // 中文注释
  *    增加对附件下载的支持
+ *    优化文件后缀名识别
  *    修改下载方式为按顺序下载，避免超时
  *    增加当鼠标中键点击时手动打包
  *  */
@@ -102,7 +103,7 @@
       let { files, images } = p[i].body
       if (files) {
         for (let j = 0; j < files.length; ++j) {
-          let extension = files[j].url.slice(-3)
+          let extension = files[j].url.split('.').slice(-1)[0]
           let blob = await gmRequireImage(files[j].url)
           zip.folder(folder).file(`${folder}_${j}.${extension}`, blob, {
             compression: "STORE"
@@ -115,7 +116,7 @@
       }
       if (images) {
         for (let j = 0; j < images.length; ++j) {
-          let extension = images[j].extension === 'jpeg' ? 'jpg' : 'png'
+          let extension = images[j].originalUrl.split('.').slice(-1)[0]
           textDiv.innerHTML = ` ${ processed } / ${ amount } `
           let blob = await gmRequireImage(images[j].originalUrl)
           zip.folder(folder).file(`${folder}_${j}.${extension}`, blob, {
