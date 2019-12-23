@@ -48,7 +48,7 @@
                       Download/下载
               </div>
           </a>`
-    downloadBtn.addEventListener('click', event => {
+    downloadBtn.addEventListener('mousedown', event => {
       let creatorId = parseInt(document.URL.split('/')[5])
       if (event.button === 1) {
         zip.generateAsync({
