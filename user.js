@@ -1,17 +1,23 @@
 // ==UserScript==
 // @name         Fanbox Batch Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.32
+// @version      0.40
 // @description  Batch Download on creator, not post
 // @author       https://github.com/amarillys
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.2.2/jszip.min.js
 // @match        https://www.pixiv.net/fanbox/creator/*
 // @grant        GM_xmlhttpRequest
+// @run-at       document-end
 // @license      MIT
 // ==/UserScript==
 
 /**
  * Update Log
+ *  > 191226
+ *    Support downloading by batch(default: 100 files per batch)
+ *    // 中文注释
+ *    新增支持分批下载的功能（默认100个文件一个批次）
+ *
  *  > 191223
  *    Add support of files
  *    Improve the detect of file extension
@@ -29,6 +35,8 @@
   'use strict';
 
   let zip = new JSZip()
+  let amount = 0
+  let uiInited = false
   const fetchOptions = {
     credentials: 'include',
     headers: {
@@ -36,31 +44,59 @@
     }
   }
 
-  window.onload = () => {
+  let init = async () => {
     let baseBtn = document.querySelector('[href="/fanbox/notification"]')
     let className = baseBtn.parentNode.className
     let parent = baseBtn.parentNode.parentNode
+    let inputDiv = document.createElement('div')
+    let creatorId = parseInt(document.URL.split('/')[5])
+    inputDiv.innerHTML = `
+      <input id="dlStart" style="width: 3rem" type="text" value="1"> -> <input id="dlEnd" style="width: 3rem" type="text">
+       / 分批/Batch: <input id="dlStep" style="width: 3rem" type="text" value="100">`
+    parent.appendChild(inputDiv)
+
     let downloadBtn = document.createElement('div')
+    downloadBtn.id = 'FanboxDownloadBtn'
     downloadBtn.className = className
     downloadBtn.innerHTML = `
-          <a href="javascript:void(0)">
-              <div id="amarillys-download-progress"
-                  style="line-height: 32px;width: 100px;height: 32px;background-color: rgba(232, 12, 2, 0.96);;border-radius: 8px;color: #FFF;text-align: center;">
-                      Download/下载
-              </div>
-          </a>`
+      <a href="javascript:void(0)">
+          <div id="amarillys-download-progress"
+              style="line-height: 32px;width: 100px;height: 32px;background-color: rgba(232, 12, 2, 0.96);;border-radius: 8px;color: #FFF;text-align: center;">
+                  Download/下载
+          </div>
+      </a>`
+    parent.appendChild(downloadBtn)
+    uiInited = true
+
+    let creatorInfo = await getAllPostsByFanboxId(creatorId)
+    // count files amount
+    for (let i = 0, p = creatorInfo.posts; i < p.length; ++i) {
+      if (!p[i].body) continue
+      let { images } = p[i].body
+      amount += images ? images.length : 0
+    }
+    document.querySelector('#dlEnd').value = amount
+
     downloadBtn.addEventListener('mousedown', event => {
-      let creatorId = parseInt(document.URL.split('/')[5])
       if (event.button === 1) {
         zip.generateAsync({
           type: 'blob'
         }).then(zipBlob => saveBlob(zipBlob, `${creatorId}.zip`))
       } else {
         console.log('startDownloading');
-        downloadByFanboxId(creatorId);
+        downloadByFanboxId(creatorInfo, creatorId);
       }
     })
-    parent.appendChild(downloadBtn)
+  }
+
+  window.onload = () => {
+    init()
+    let timer = setInterval(() => {
+      if (!uiInited && document.querySelector('#FanboxDownloadBtn') === null)
+        init()
+      else
+        clearInterval(timer)
+    }, 3000)
   }
 
   function gmRequireImage(url) {
@@ -76,25 +112,14 @@
     })
   }
 
-  async function downloadByFanboxId(creatorId) {
-    let textDiv = document.querySelector('#amarillys-download-progress')
-    textDiv.innerHTML = ` ...... `
-    let creatorInfo = await getAllPostsByFanboxId(creatorId)
-    let amount = 0
+  async function downloadByFanboxId(creatorInfo, creatorId) {
     let processed = 0
-    let waittime = 0
+    let stepped = 0
+    let STEP = parseInt(document.querySelector('#dlStep').value)
+    let textDiv = document.querySelector('#amarillys-download-progress')
     zip.file('cover.jpg', await gmRequireImage(creatorInfo.cover), {
       compression: "STORE"
     })
-
-    // count files amount
-    for (let i = 0, p = creatorInfo.posts; i < p.length; ++i) {
-      if (!p[i].body) continue
-      let { files, images } = p[i].body
-      amount += files ? files.length : 0
-      amount += images ? images.length : 0
-    }
-    textDiv.innerHTML = ` ${ processed } / ${ amount } `
 
     // start downloading
     for (let i = 0, p = creatorInfo.posts; i < p.length; ++i) {
@@ -105,11 +130,7 @@
         for (let j = 0; j < files.length; ++j) {
           let extension = files[j].url.split('.').slice(-1)[0]
           let blob = await gmRequireImage(files[j].url)
-          zip.folder(folder).file(`${folder}_${j}.${extension}`, blob, {
-            compression: "STORE"
-          })
-          waittime--
-          processed++
+          saveBlob(blob, `${creatorId} - ${folder}_${j}.${extension}`)
           textDiv.innerHTML = ` ${ processed } / ${ amount } `
           console.log(` Progress: ${ processed } / ${ amount }`)
         }
@@ -122,23 +143,32 @@
           zip.folder(folder).file(`${folder}_${j}.${extension}`, blob, {
             compression: "STORE"
           })
-          waittime--
+          stepped++
           processed++
           textDiv.innerHTML = ` ${ processed } / ${ amount } `
           console.log(` Progress: ${ processed } / ${ amount }`)
+          if (amount === processed) {
+            zip.generateAsync({
+              type: 'blob'
+            }).then(zipBlob => {
+              saveBlob(zipBlob, `${creatorId}-${amount - stepped}-${amount}.zip`)
+              textDiv.innerHTML = ` Okayed/完成 `
+            })
+          } else {
+            if (stepped >= STEP) {
+              let start = amount - stepped
+              zip.generateAsync({
+                type: 'blob'
+              }).then(zipBlob => {
+                saveBlob(zipBlob, `${creatorId}-${start}-${processed}.zip`)
+              })
+              zip = new JSZip()
+              stepped = 0
+            }
+          }
         }
       }
     }
-    // generate zip to download
-    let timer = setInterval(() => {
-      waittime++
-      if (amount === processed || waittime > 300) {
-        zip.generateAsync({
-          type: 'blob'
-        }).then(zipBlob => saveBlob(zipBlob, `${creatorId}.zip`))
-        clearInterval(timer)
-      }
-    }, 1000)
   }
 
   async function getAllPostsByFanboxId(creatorId) {
@@ -162,7 +192,6 @@
 
   function saveBlob(blob, fileName) {
     let downloadDom = document.createElement('a')
-    downloadDom.id = 'fuck'
     document.body.appendChild(downloadDom)
     downloadDom.style = `display: none`
     let url = window.URL.createObjectURL(blob)
