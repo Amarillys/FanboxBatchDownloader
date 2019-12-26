@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Fanbox Batch Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.40
+// @version      0.41
 // @description  Batch Download on creator, not post
 // @author       https://github.com/amarillys
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.2.2/jszip.min.js
@@ -15,9 +15,10 @@
  * Update Log
  *  > 191226
  *    Support downloading by batch(default: 100 files per batch)
+ *    Support donwloading by specific index
  *    // 中文注释
  *    新增支持分批下载的功能（默认100个文件一个批次）
- *
+ *    新增支持按索引下载的功能
  *  > 191223
  *    Add support of files
  *    Improve the detect of file extension
@@ -34,7 +35,7 @@
 (function () {
   'use strict';
 
-  let zip = new JSZip()
+  let zip = null
   let amount = 0
   let uiInited = false
   const fetchOptions = {
@@ -61,8 +62,8 @@
     downloadBtn.innerHTML = `
       <a href="javascript:void(0)">
           <div id="amarillys-download-progress"
-              style="line-height: 32px;width: 100px;height: 32px;background-color: rgba(232, 12, 2, 0.96);;border-radius: 8px;color: #FFF;text-align: center;">
-                  Download/下载
+              style="line-height: 32px;width: 8rem;height: 32px;background-color: rgba(232, 12, 2, 0.96);;border-radius: 8px;color: #FFF;text-align: center;">
+                  Initilizing/初始化中...
           </div>
       </a>`
     parent.appendChild(downloadBtn)
@@ -72,9 +73,11 @@
     // count files amount
     for (let i = 0, p = creatorInfo.posts; i < p.length; ++i) {
       if (!p[i].body) continue
-      let { images } = p[i].body
+      let { files, images } = p[i].body
       amount += images ? images.length : 0
+      amount += files ? files.length : 0
     }
+    document.querySelector('#amarillys-download-progress').innerHTML = ` Download/下载 `
     document.querySelector('#dlEnd').value = amount
 
     downloadBtn.addEventListener('mousedown', event => {
@@ -113,7 +116,12 @@
   }
 
   async function downloadByFanboxId(creatorInfo, creatorId) {
+    zip = new JSZip()
     let processed = 0
+    let ptr = 0
+    let start = document.getElementById('dlStart').value - 1
+    let end = document.getElementById('dlEnd').value - 1
+    amount = end - start + 1
     let stepped = 0
     let STEP = parseInt(document.querySelector('#dlStep').value)
     let textDiv = document.querySelector('#amarillys-download-progress')
@@ -121,51 +129,59 @@
       compression: "STORE"
     })
 
+    const detectFinish = () => {
+      if (amount === processed) {
+        zip.generateAsync({
+          type: 'blob'
+        }).then(zipBlob => {
+          saveBlob(zipBlob, `${creatorId}-${end - stepped + 2}-${end + 1}.zip`)
+          textDiv.innerHTML = ` Okayed/完成 `
+        })
+      } else {
+        if (stepped >= STEP) {
+          zip.generateAsync({
+            type: 'blob'
+          }).then(zipBlob => {
+            saveBlob(zipBlob, `${creatorId}-${ptr}-${ptr + stepped}.zip`)
+          })
+          zip = new JSZip()
+          stepped = 0
+        }
+      }
+    }
     // start downloading
     for (let i = 0, p = creatorInfo.posts; i < p.length; ++i) {
       let folder = `${p[i].title}-${p[i].id}`
       if (!p[i].body) continue
       let { files, images } = p[i].body
       if (files) {
-        for (let j = 0; j < files.length; ++j) {
+        for (let j = 0; j < files.length; ++j, ++ptr) {
+          if (ptr < start) continue
+          if (ptr > end) break
           let extension = files[j].url.split('.').slice(-1)[0]
           let blob = await gmRequireImage(files[j].url)
           saveBlob(blob, `${creatorId} - ${folder}_${j}.${extension}`)
+          processed++
           textDiv.innerHTML = ` ${ processed } / ${ amount } `
           console.log(` Progress: ${ processed } / ${ amount }`)
         }
+        detectFinish()
       }
       if (images) {
-        for (let j = 0; j < images.length; ++j) {
+        for (let j = 0; j < images.length; ++j, ++ptr) {
+          if (ptr < start) continue
+          if (ptr > end) break
           let extension = images[j].originalUrl.split('.').slice(-1)[0]
           textDiv.innerHTML = ` ${ processed } / ${ amount } `
           let blob = await gmRequireImage(images[j].originalUrl)
           zip.folder(folder).file(`${folder}_${j}.${extension}`, blob, {
             compression: "STORE"
           })
-          stepped++
           processed++
+          stepped++
           textDiv.innerHTML = ` ${ processed } / ${ amount } `
           console.log(` Progress: ${ processed } / ${ amount }`)
-          if (amount === processed) {
-            zip.generateAsync({
-              type: 'blob'
-            }).then(zipBlob => {
-              saveBlob(zipBlob, `${creatorId}-${amount - stepped}-${amount}.zip`)
-              textDiv.innerHTML = ` Okayed/完成 `
-            })
-          } else {
-            if (stepped >= STEP) {
-              let start = amount - stepped
-              zip.generateAsync({
-                type: 'blob'
-              }).then(zipBlob => {
-                saveBlob(zipBlob, `${creatorId}-${start}-${processed}.zip`)
-              })
-              zip = new JSZip()
-              stepped = 0
-            }
-          }
+          detectFinish()
         }
       }
     }
