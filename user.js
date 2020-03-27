@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Fanbox Batch Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.61
+// @version      0.625
 // @description  Batch Download on creator, not post
 // @author       https://github.com/amarillys QQ 719862760
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.2.2/jszip.min.js
@@ -16,6 +16,10 @@
 
 /**
  * Update Log
+ *  > 200328
+ *    Improve file naming
+ *    Fix bugs that may cause files being skipped
+ *    Add text if exist in post
  *  > 200226
  *    Adapt to new Api! Add Error Tip!
  *    More frequentyle progress bar!
@@ -182,17 +186,8 @@
       this.size += blob.size
     }
     add(folder, name, blob) {
-      if (this.size + blob.size >= Zip.MAX_SIZE) {
-        let index = this.partIndex
-        this.zip
-          .generateAsync({
-            type: 'blob'
-          })
-          .then(zipBlob => saveBlob(zipBlob, `${this.title}-${index}.zip`))
-        this.partIndex++
-        this.zip = new JSZip()
-        this.size = 0
-      }
+      if (this.size + blob.size >= Zip.MAX_SIZE)
+        this.pack()
       this.zip.folder(folder).file(name, blob, {
         compression: 'STORE'
       })
@@ -320,7 +315,11 @@
     }
   }
 
-  const setProgress = amount => progressCtl.setValue(progressList.reduce((p, q) => p + q, 0) / amount * 100)
+  const setProgress = amount => {
+    let currentProgress = progressList.reduce((p, q) => p + q, 0) / amount * 100
+    if (currentProgress > 0)
+      progressCtl.setValue(currentProgress)
+  }
 
   window.onload = () => {
     init()
@@ -374,7 +373,7 @@
     progressCtl.setValue(0)
     let { batch, end, start, thread } = options
     options.progress = 0
-    zip = new Zip(`${creatorId}-${creatorInfo.name}-${start}-${end}`)
+    zip = new Zip(`${creatorInfo.name}@${start}-${end}`)
     let stepped = 0
     creatorInfo.cover ? gmRequireImage(creatorInfo.cover, 0).then(blob => zip.file('cover.jpg', blob)) : null
 
@@ -386,11 +385,18 @@
       label.name(Text['packed' + EN_FIX])
     })
 
+    // for name exist detect
+    let titles = []
+
     // start downloading
     for (let i = start - 1, p = creatorInfo.posts; i < end; ++i) {
-      let folder = `${p[i].title.replace(/\//g, '-')}-${p[i].id}`
+      let folder = `${p[i].title.replace(/\//g, '-')}`
+      let titleExistLength = titles.filter(title => title === folder).length
+      if (titleExistLength > 0)
+        folder += `-${titleExistLength}`
+      titles.push(folder)
       if (!p[i].body) continue
-      let { blocks, imageMap, fileMap, files, images } = p[i].body
+      let { blocks, imageMap, fileMap, files, images, text } = p[i].body
       let picIndex = 0
       let imageList = []
       let fileList = []
@@ -441,9 +447,11 @@
           let index = amount
           amount++
           pool.add(() => new Promise((resolve, reject) => {
+            let fileIndexText = ''
+            if (files.length > 1) fileIndexText = `-${j}`
             gmRequireImage(file.url, index).then(blob => {
               processed++
-              saveBlob(blob, `${creatorId}-${folder}_${j}-${file.name}.${file.extension}`)
+              saveBlob(blob, `${creatorInfo.name}-${folder}${fileIndexText}-${file.name}.${file.extension}`)
               stepped++
               resolve()
             }).catch(() => {
@@ -462,10 +470,12 @@
           pool.add(() => new Promise((resolve, reject) => {
             gmRequireImage(file.url, index).then(blob => {
               processed++
-              if (blob.size < 51200000)
-                zip.add(folder, `${file.name}.${file.extension}`)
+              let fileIndexText = ''
+              if (files.length > 1) fileIndexText = `-${j}`
+              if (blob.size < 51200000 * 2)
+                zip.add(folder, `${file.name}${fileIndexText}.${file.extension}`, blob)
               else
-                saveBlob(blob, `${folder}-${creatorInfo.name}-${folder}_${j}.${file.extension}`)
+                saveBlob(blob, `${creatorInfo.name}@${folder}${fileIndexText}.${file.extension}`)
               stepped++
               resolve()
             }).catch(() => {
@@ -493,6 +503,11 @@
           }))
         }
       }
+
+      if (text) {
+        let textBlob = new Blob([text], { type: 'text/plain' })
+        zip.add(folder, `${creatorInfo.name}-${folder}.txt`, textBlob)
+      }
     }
     progressList = new Array(amount).fill(0)
     pool.step = () => {
@@ -512,7 +527,7 @@
       cover: null,
       posts: []
     }
-    const limit = 100
+    const limit = 50
     creatorInfo.cover = userData.body.coverImageUrl
     creatorInfo.name = userData.body.user.name
 
@@ -525,6 +540,7 @@
       creatorInfo.posts.push(...nextData.body.items.filter(p => p.body))
       nextPageUrl = nextData.body.nextUrl
     }
+    console.log(creatorInfo)
     return creatorInfo
   }
 
