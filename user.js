@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         Fanbox Batch Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.625
+// @version      0.670
 // @description  Batch Download on creator, not post
 // @author       https://github.com/amarillys QQ 719862760
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.2.2/jszip.min.js
 // @require      https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.6/dat.gui.min.js
-// @match        https://www.pixiv.net/fanbox/creator/*
+// @match        https://*.fanbox.cc/*
+// @match        https://www.fanbox.cc/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_addStyle
 // @grant        unsafeWindow
@@ -16,6 +17,15 @@
 
 /**
  * Update Log
+ *  > 210216
+ *    Add semi-custom name function.
+ *  > 200514
+ *    Decrease the pack size to avoid the stack overflow.
+ *  > 200429
+ *    Bug Fixed!
+ *  > 200427
+ *    Adapt to new Fanbox Change!
+ *    Add post id to folder name!
  *  > 200328
  *    Improve file naming
  *    Fix bugs that may cause files being skipped
@@ -70,9 +80,8 @@
 ;(function() {
   'use strict'
 
-  const apiUserUri = 'https://fanbox.pixiv.net/api/creator.get'
-  const apiPostUri = 'https://fanbox.pixiv.net/api/post.listCreator'
-  
+  const apiUserUri = 'https://api.fanbox.cc/creator.get'
+  const apiPostUri = 'https://api.fanbox.cc/post.listCreator'
   // set style
   GM_addStyle(`
     .dg.main{
@@ -206,9 +215,10 @@
       this.size = 0
     }
   }
-  Zip.MAX_SIZE = 1048576000
+  Zip.MAX_SIZE = 800000000/*1048576000*/
 
-  const creatorId = parseInt(document.URL.split('/')[5])
+  const creatorId = document.URL.startsWith('https://www') ?
+        document.URL.match(/@([\w_-]+)\/?/)[1] : document.URL.match(/https:\/\/(.+).fanbox/)[1]
   let creatorInfo = null
   let options = {
     start: 1,
@@ -216,7 +226,10 @@
     thread: 6,
     batch: 200,
     progress: 0,
-    speed: 0
+    speed: 0,
+    nameWithId: 0,
+    nameWithDate: 1,
+    nameWithTitle: 1
   }
 
   const Text = {
@@ -239,6 +252,12 @@
     initFailed_1_en: 'or connect at Github',
     initFinished: '初始化完成',
     initFinished_en: 'Initilized',
+    name_with_id: '文件名带ID',
+    name_with_id_en: 'name with id',
+    name_with_date: '文件名带日期',
+    name_with_date_en: 'name with date',
+    name_with_title: '文件名带名字',
+    name_with_title_en: 'name with title',
     start: '起始 / start',
     end: '结束 / end',
     thread: '线程 / threads',
@@ -267,6 +286,7 @@
       label.name(Text['packed' + EN_FIX])
     }
   }
+
   label = gui.add(clickHandler, 'text').name(Text['init' + EN_FIX])
   let progressCtl = null
 
@@ -293,6 +313,9 @@
     const endCtl = gui.add(options, 'end', 1, sum, 1).name(Text.end)
     gui.add(options, 'thread', 1, 20, 1).name(Text.thread)
     gui.add(options, 'batch', 10, 5000, 10).name(Text.batch)
+    gui.add(options, 'nameWithId', 0, 1, 1).name(Text['name_with_id' + EN_FIX])
+    gui.add(options, 'nameWithDate', 0, 1, 1).name(Text['name_with_date' + EN_FIX])
+    // gui.add(options, 'nameWithTitle', 0, 1, 1).name(Text['name_with_title' + EN_FIX])
     gui.add(clickHandler, 'download').name(Text['download' + EN_FIX])
     gui.add(clickHandler, 'pack').name(Text['pack' + EN_FIX])
     endCtl.setValue(sum)
@@ -368,7 +391,7 @@
 
   async function downloadByFanboxId(creatorInfo, creatorId) {
     let processed = 0
-    amount = 1
+    amount = 0
     label.name(Text['downloading' + EN_FIX])
     progressCtl.setValue(0)
     let { batch, end, start, thread } = options
@@ -390,10 +413,12 @@
 
     // start downloading
     for (let i = start - 1, p = creatorInfo.posts; i < end; ++i) {
-      let folder = `${p[i].title.replace(/\//g, '-')}`
+      let folder = '';
+      options.nameWithDate === 1 && (folder += `[${p[i].publishedDatetime.split('T')[0].replace(/-/g, '')}] - `);
+      options.nameWithId === 1 && (folder += `${p[i].id}-`);
+      folder += p[i].title.replace(/\//g, '-');
       let titleExistLength = titles.filter(title => title === folder).length
-      if (titleExistLength > 0)
-        folder += `-${titleExistLength}`
+      if (titleExistLength > 0) folder += `-${titleExistLength}`
       titles.push(folder)
       if (!p[i].body) continue
       let { blocks, imageMap, fileMap, files, images, text } = p[i].body
@@ -448,7 +473,7 @@
           amount++
           pool.add(() => new Promise((resolve, reject) => {
             let fileIndexText = ''
-            if (files.length > 1) fileIndexText = `-${j}`
+            if (fileList.length > 1) fileIndexText = `-${j}`
             gmRequireImage(file.url, index).then(blob => {
               processed++
               saveBlob(blob, `${creatorInfo.name}-${folder}${fileIndexText}-${file.name}.${file.extension}`)
@@ -472,7 +497,7 @@
               processed++
               let fileIndexText = ''
               if (files.length > 1) fileIndexText = `-${j}`
-              if (blob.size < 51200000 * 2)
+              if (blob.size < 51200000 * 3)
                 zip.add(folder, `${file.name}${fileIndexText}.${file.extension}`, blob)
               else
                 saveBlob(blob, `${creatorInfo.name}@${folder}${fileIndexText}.${file.extension}`)
@@ -521,18 +546,18 @@
 
   async function getAllPostsByFanboxId(creatorId) {
     // request userinfo
-    const userUri = `${apiUserUri}?userId=${creatorId}`
+    const userUri = `${apiUserUri}?creatorId=${creatorId}`
     const userData = await (await fetch(userUri, fetchOptions)).json()
     let creatorInfo = {
       cover: null,
       posts: []
     }
-    const limit = 50
+    const limit = 56
     creatorInfo.cover = userData.body.coverImageUrl
     creatorInfo.name = userData.body.user.name
 
     // request post info
-    let postData = await (await fetch(`${apiPostUri}?userId=${creatorId}&limit=${limit}`, fetchOptions)).json()
+    let postData = await (await fetch(`${apiPostUri}?creatorId=${creatorId}&limit=${limit}`, fetchOptions)).json()
     creatorInfo.posts.push(...postData.body.items.filter(p => p.body))
     let nextPageUrl = postData.body.nextUrl
     while (nextPageUrl) {
