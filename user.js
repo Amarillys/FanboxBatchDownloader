@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Fanbox Batch Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.670
+// @version      0.675
 // @description  Batch Download on creator, not post
 // @author       https://github.com/amarillys QQ 719862760
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.2.2/jszip.min.js
@@ -17,6 +17,8 @@
 
 /**
  * Update Log
+ *  > 210301
+ *    Move id behind title in folder name.
  *  > 210216
  *    Add semi-custom name function.
  *  > 200514
@@ -415,8 +417,8 @@
     for (let i = start - 1, p = creatorInfo.posts; i < end; ++i) {
       let folder = '';
       options.nameWithDate === 1 && (folder += `[${p[i].publishedDatetime.split('T')[0].replace(/-/g, '')}] - `);
-      options.nameWithId === 1 && (folder += `${p[i].id}-`);
       folder += p[i].title.replace(/\//g, '-');
+      options.nameWithId === 1 && (folder += ` - ${p[i].id}`);
       let titleExistLength = titles.filter(title => title === folder).length
       if (titleExistLength > 0) folder += `-${titleExistLength}`
       titles.push(folder)
