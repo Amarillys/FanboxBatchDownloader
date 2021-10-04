@@ -1,0 +1,23 @@
+{
+  "name": "fanboxbatchdownloader",
+  "version": "0.7.0",
+  "description": "a userscript that helps user to download fanbox posts.",
+  "main": "user.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Amarillys/FanboxBatchDownloader.git"
+  },
+  "keywords": [
+    "fanbox",
+    "userscript"
+  ],
+  "author": "Amarillys",
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/Amarillys/FanboxBatchDownloader/issues"
+  },
+  "homepage": "https://github.com/Amarillys/FanboxBatchDownloader#readme",
+  "devDependencies": {
+    "eslint": "^7.32.0"
+  }
+}

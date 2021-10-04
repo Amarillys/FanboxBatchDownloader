@@ -1,7 +1,8 @@
+/* global unsafeWindow dat GM_addStyle */
 // ==UserScript==
 // @name         Fanbox Batch Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.675
+// @version      0.700
 // @description  Batch Download on creator, not post
 // @author       https://github.com/amarillys QQ 719862760
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.2.2/jszip.min.js
@@ -15,68 +16,6 @@
 // @license      MIT
 // ==/UserScript==
 
-/**
- * Update Log
- *  > 210301
- *    Move id behind title in folder name.
- *  > 210216
- *    Add semi-custom name function.
- *  > 200514
- *    Decrease the pack size to avoid the stack overflow.
- *  > 200429
- *    Bug Fixed!
- *  > 200427
- *    Adapt to new Fanbox Change!
- *    Add post id to folder name!
- *  > 200328
- *    Improve file naming
- *    Fix bugs that may cause files being skipped
- *    Add text if exist in post
- *  > 200226
- *    Adapt to new Api! Add Error Tip!
- *    More frequentyle progress bar!
- *    More clearly status!
- *  > 200224
- *    More beautiful! UI Redesigned. --use dat.gui,
- *    Performence Improved. -- multi-thread supported.
- *  > 200222
- *    Bug Fixed - Psd files download failure <Change download type from blob to arraybuffer, which cause low performence>
- *    Bug Fixed - Display incorrect on partial download
- *  > 200222
- *    Bug Fixed - Post with '/' cause deep path in zip
- *  > 200102
- *    Bug Fixed - Caused by empty cover
- *  > 191228
- *    Bug Fixed
- *    Correct filenames
- *  > 191227
- *    Code Reconstruct
- *    Support downloading of artice
- *    Correct filenames
- *
- *    // 中文注释
- *    代码重构
- *    新增对文章的下载支持
- *  > 200222
- *    偷懒，以后不加中文注释
- *  > 191226
- *    Support downloading by batch(default: 100 files per batch)
- *    Support donwloading by specific index
- *    // 中文注释
- *    新增支持分批下载的功能（默认100个文件一个批次）
- *    新增支持按索引下载的功能
- *
- *  > 191223
- *    Add support of files
- *    Improve the detect of file extension
- *    Change Download Request as await, for avoiding delaying.
- *    Add manual package while click button use middle button of mouse
- *    // 中文注释
- *    增加对附件下载的支持
- *    优化文件后缀名识别
- *    修改下载方式为按顺序下载，避免超时
- *    增加当鼠标中键点击时手动打包
- **/
 
 /* global JSZip GM_xmlhttpRequest */
 ;(function() {
@@ -209,7 +148,8 @@
       let index = this.partIndex
       this.zip
         .generateAsync({
-          type: 'blob'
+          type: 'blob',
+          compression: 'STORE'
         })
         .then(zipBlob => saveBlob(zipBlob, `${this.title}-${index}.zip`))
       this.partIndex++
@@ -217,10 +157,11 @@
       this.size = 0
     }
   }
-  Zip.MAX_SIZE = 800000000/*1048576000*/
+  Zip.MAX_SIZE = 842000000/*1048576000*/
 
   const creatorId = document.URL.startsWith('https://www') ?
-        document.URL.match(/@([\w_-]+)\/?/)[1] : document.URL.match(/https:\/\/(.+).fanbox/)[1]
+        document.URL.match(/@([\w_-]+)\/?/)?.[1] : document.URL.match(/https:\/\/(.+).fanbox/)?.[1]
+  if (!creatorId) return;
   let creatorInfo = null
   let options = {
     start: 1,
@@ -293,7 +234,7 @@
   let progressCtl = null
 
   let init = async () => {
-    let base = unsafeWindow.document.querySelector('#root')
+    let base = window.document.querySelector('#root')
 
     base.appendChild(gui.domElement)
     uiInited = true
@@ -353,45 +294,7 @@
     }, 3000)
   }
 
-  function gmRequireImage(url, index) {
-    return new Promise((resolve, reject) =>
-      GM_xmlhttpRequest({
-        method: 'GET',
-        url,
-        overrideMimeType: 'application/octet-stream',
-        responseType: 'blob',
-        asynchrouns: true,
-        onload: res => {
-          progressList[index] = 1
-          setProgress(amount)
-          resolve(res.response)
-        },
-        onprogress: res => {
-          progressList[index] = res.done / res.total
-          setProgress(amount)
-        },
-        onerror: () =>
-          GM_xmlhttpRequest({
-            method: 'GET',
-            url,
-            overrideMimeType: 'application/octet-stream',
-            responseType: 'arraybuffer',
-            onload: res => {
-              progressList[index] = 1
-              setProgress(amount)
-              resolve(new Blob([res.response]))
-            },
-            onprogress: res => {
-              progressList[index] = res.done / res.total
-              setProgress(amount)
-            },
-            onerror: res => reject(res)
-          })
-      })
-    )
-  }
-
-  async function downloadByFanboxId(creatorInfo, creatorId) {
+  async function downloadByFanboxId(creatorInfo) {
     let processed = 0
     amount = 0
     label.name(Text['downloading' + EN_FIX])
@@ -400,8 +303,6 @@
     options.progress = 0
     zip = new Zip(`${creatorInfo.name}@${start}-${end}`)
     let stepped = 0
-    creatorInfo.cover ? gmRequireImage(creatorInfo.cover, 0).then(blob => zip.file('cover.jpg', blob)) : null
-
     // init pool
     pool = new ThreadPool(thread)
     pool.finish(() => {
@@ -412,6 +313,14 @@
 
     // for name exist detect
     let titles = []
+    progressList = new Array(amount).fill(0)
+    pool.step = () => {
+      console.log(` Progress: ${processed} / ${amount}, Pool: ${pool.running} @ ${pool.sum}`)
+      if (stepped >= batch) {
+        zip.pack()
+        stepped = 0
+      }
+    }
 
     // start downloading
     for (let i = start - 1, p = creatorInfo.posts; i < end; ++i) {
@@ -423,8 +332,9 @@
       if (titleExistLength > 0) folder += `-${titleExistLength}`
       titles.push(folder)
       if (!p[i].body) continue
-      let { blocks, imageMap, fileMap, files, images, text } = p[i].body
+      let { blocks, embedMap, imageMap, fileMap, files, images, text } = p[i].body
       let picIndex = 0
+      let fileIndex = 0
       let imageList = []
       let fileList = []
 
@@ -437,16 +347,30 @@
               break
             }
             case 'image': {
-              picIndex++
               let image = imageMap[blocks[j].imageId]
               imageList.push(image)
-              article += `![${p[i].title} - P${picIndex}](${folder}_${j}.${image.extension})\n\n`
+              article += `![${p[i].title} - P${picIndex}](${folder}_${picIndex}.${image.extension})\n\n`
+              picIndex++
               break
             }
             case 'file': {
               let file = fileMap[blocks[j].fileId]
               fileList.push(file)
-              article += `[${p[i].title} - ${file.name}](${creatorId}-${folder}-${file.name}.${file.extension})\n\n`
+              article += `[File${fileIndex} - ${file.name}](${file.name}.${file.extension})\n\n`
+              fileIndex++
+              break
+            }
+            case 'embed': {
+              let extenalUrl = embedMap[blocks[j].embedId]
+              let serviceProvideMap = {
+                gist: `[Github Gist - ${extenalUrl.contentId}](https://gist.github.com/${extenalUrl.contentId})`,
+                google_forms: `[Google Forms - ${extenalUrl.contentId}](https://docs.google.com/forms/d/e/${extenalUrl.contentId}/viewform)`,
+                soundcloud  : `[SoundCloud - ${extenalUrl.contentId}](https://soundcloud.com/${extenalUrl.contentId})`,
+                twitter: `[Twitter - ${extenalUrl.contentId}](https://twitter.com/i/web/status/${extenalUrl.contentId})`,
+                vimeo  : `[Vimeo - ${extenalUrl.contentId}](https://vimeo.com/${extenalUrl.contentId})`,
+                youtube: `[Youtube - ${extenalUrl.contentId}](https://www.youtube.com/watch?v=${extenalUrl.contentId})`
+              }
+              article += serviceProvideMap[extenalUrl.serviceProvider] + '\n\n'
               break
             }
           }
@@ -474,11 +398,9 @@
           let index = amount
           amount++
           pool.add(() => new Promise((resolve, reject) => {
-            let fileIndexText = ''
-            if (fileList.length > 1) fileIndexText = `-${j}`
             gmRequireImage(file.url, index).then(blob => {
               processed++
-              saveBlob(blob, `${creatorInfo.name}-${folder}${fileIndexText}-${file.name}.${file.extension}`)
+              zip.add(folder, `${file.name}.${file.extension}`, blob)
               stepped++
               resolve()
             }).catch(() => {
@@ -536,14 +458,12 @@
         zip.add(folder, `${creatorInfo.name}-${folder}.txt`, textBlob)
       }
     }
-    progressList = new Array(amount).fill(0)
-    pool.step = () => {
-      console.log(` Progress: ${processed} / ${amount}, Pool: ${pool.running} @ ${pool.sum}`)
-      if (stepped >= batch) {
-        zip.pack()
-        stepped = 0
-      }
-    }
+
+    if (creatorInfo.cover)
+      gmRequireImage(creatorInfo.cover, 0).then(blob => {
+        zip.file('cover.jpg', blob)
+        if (amount === 0) zip.pack()
+      })
   }
 
   async function getAllPostsByFanboxId(creatorId) {
@@ -580,5 +500,43 @@
     downloadDom.download = fileName
     downloadDom.click()
     window.URL.revokeObjectURL(url)
+  }
+
+  function gmRequireImage(url, index) {
+    return new Promise((resolve, reject) =>
+      GM_xmlhttpRequest({
+        method: 'GET',
+        url,
+        overrideMimeType: 'application/octet-stream',
+        responseType: 'blob',
+        asynchrouns: true,
+        onload: res => {
+          progressList[index] = 1
+          setProgress(amount)
+          resolve(res.response)
+        },
+        onprogress: res => {
+          progressList[index] = res.done / res.total
+          setProgress(amount)
+        },
+        onerror: () =>
+          GM_xmlhttpRequest({
+            method: 'GET',
+            url,
+            overrideMimeType: 'application/octet-stream',
+            responseType: 'arraybuffer',
+            onload: res => {
+              progressList[index] = 1
+              setProgress(amount)
+              resolve(new Blob([res.response]))
+            },
+            onprogress: res => {
+              progressList[index] = res.done / res.total
+              setProgress(amount)
+            },
+            onerror: res => reject(res)
+          })
+      })
+    )
   }
 })()
