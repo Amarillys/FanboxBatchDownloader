@@ -1,10 +1,16 @@
+### V0.700.1 - 211026
+
+#### Bug Fixed
+
+Fix the issue that some files(bigger than 147mb) were downloaded separately
+
 ### V0.700 - 211004
 
 #### Feature
 
 + Add support for embed external link.
 
-  #### Bug Fixed
+#### Bug Fixed
 
   + Fix a bug that the STORE compression method not works.
   + Fix a bug that the article's image id doesn't match.
