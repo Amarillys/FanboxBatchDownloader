@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         Fanbox Batch Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.700.1
+// @version      0.700.2
 // @description  Batch Download on creator, not post
 // @author       https://github.com/amarillys QQ 719862760
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.2.2/jszip.min.js
@@ -138,7 +138,7 @@
     add(folder, name, blob) {
       if (this.size + blob.size >= Zip.MAX_SIZE)
         this.pack()
-      this.zip.folder(folder).file(name, blob, {
+      this.zip.folder(purifyName(folder)).file(purifyName(name), blob, {
         compression: 'STORE'
       })
       this.size += blob.size
@@ -538,5 +538,10 @@
           })
       })
     )
+  }
+
+  function purifyName(filename) {
+    return filename.replaceAll(':', '').replaceAll('/', '').replaceAll('\\', '').replaceAll('>', '').replaceAll('<', '')
+        .replaceAll('*:', '').replaceAll('|', '').replaceAll('?', '').replaceAll('"', '')
   }
 })()

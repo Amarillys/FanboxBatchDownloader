@@ -1,3 +1,9 @@
+### V0.700.2 - 211121
+
+#### Bug Fixed
+
+Add a rule to change filenames to avoid the issue that files cannot be decompressed under Windows because of the special chars.
+
 ### V0.700.1 - 211026
 
 #### Bug Fixed
