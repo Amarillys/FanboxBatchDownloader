@@ -282,7 +282,7 @@
   }
 
   const setProgress = amount => {
-    let currentProgress = progressList.reduce((p, q) => p + q, 0) / amount * 100
+    let currentProgress = progressList.reduce((p, q) => (p>0?p:0) + (q>0?q:0), 0) / amount * 100
     if (currentProgress > 0)
       progressCtl.setValue(currentProgress)
   }
