@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         Fanbox Batch Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.700.2
+// @version      0.800.0
 // @description  Batch Download on creator, not post
 // @author       https://github.com/amarillys QQ 719862760
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.2.2/jszip.min.js
@@ -22,7 +22,8 @@
   'use strict'
 
   const apiUserUri = 'https://api.fanbox.cc/creator.get'
-  const apiPostUri = 'https://api.fanbox.cc/post.listCreator'
+  const apiPostListUri = 'https://api.fanbox.cc/post.listCreator'
+  const apiPostUri = 'https://api.fanbox.cc/post.info'
   // set style
   GM_addStyle(`
     .dg.main{
@@ -330,15 +331,22 @@
       options.nameWithId === 1 && (folder += ` - ${p[i].id}`);
       let titleExistLength = titles.filter(title => title === folder).length
       if (titleExistLength > 0) folder += `-${titleExistLength}`
+      folder = purifyName(folder)
       titles.push(folder)
-      if (!p[i].body) continue
+      try {
+        p[i].body = (await (await fetch(`${apiPostUri}?postId=${p[i].id}`)).json()).body.body
+        if (!p[i].body) continue
+      } catch (e) {
+        console.error(e)
+        continue
+      }
       let { blocks, embedMap, imageMap, fileMap, files, images, text } = p[i].body
       let picIndex = 0
       let fileIndex = 0
       let imageList = []
       let fileList = []
 
-      if (p[i].type === 'article') {
+      if (blocks?.length > 0) {
         let article = `# ${p[i].title}\n`
         for (let j = 0; j < blocks.length; ++j) {
           switch (blocks[j].type) {
@@ -479,12 +487,12 @@
     creatorInfo.name = userData.body.user.name
 
     // request post info
-    let postData = await (await fetch(`${apiPostUri}?creatorId=${creatorId}&limit=${limit}`, fetchOptions)).json()
-    creatorInfo.posts.push(...postData.body.items.filter(p => p.body))
+    let postData = await (await fetch(`${apiPostListUri}?creatorId=${creatorId}&limit=${limit}`, fetchOptions)).json()
+    creatorInfo.posts.push(...postData.body.items.filter(p => p.excerpt))
     let nextPageUrl = postData.body.nextUrl
     while (nextPageUrl) {
       let nextData = await (await fetch(nextPageUrl, fetchOptions)).json()
-      creatorInfo.posts.push(...nextData.body.items.filter(p => p.body))
+      creatorInfo.posts.push(...nextData.body.items.filter(p => p.excerpt))
       nextPageUrl = nextData.body.nextUrl
     }
     console.log(creatorInfo)
@@ -516,6 +524,7 @@
           resolve(res.response)
         },
         onprogress: res => {
+          if (res.total < 0) return
           progressList[index] = res.done / res.total
           setProgress(amount)
         },

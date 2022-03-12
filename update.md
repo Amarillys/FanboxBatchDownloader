@@ -1,3 +1,16 @@
+### V0.800.0 - 20220312
+
+#### New Api Adapted
+
+Fanbox changes its api. Now we must request a new api to get contents of every post.
+### Bug Fixed
+
++ fix the bug happened on markdown text when title of post contains special chars.
+
++ fix the bug the response of api return wrong file size, which cause the wrong progress displayed on GUI.
+
+
+
 ### V0.700.2 - 211121
 
 #### Bug Fixed
