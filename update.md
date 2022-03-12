@@ -1,3 +1,15 @@
+### V0.800.1 - 20220312
+
+### Bug Fixed
+
++ add covers of posts.
+
++ fix the params and now paid post can be download.
+
++ remove the wrong judgement of posts.
+
+
+
 ### V0.800.0 - 20220312
 
 #### New Api Adapted

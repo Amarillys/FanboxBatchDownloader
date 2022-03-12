@@ -334,11 +334,21 @@
       folder = purifyName(folder)
       titles.push(folder)
       try {
-        p[i].body = (await (await fetch(`${apiPostUri}?postId=${p[i].id}`)).json()).body.body
+        p[i].body = (await (await fetch(`${apiPostUri}?postId=${p[i].id}`, {
+          credentials: "include"
+        })).json()).body.body
         if (!p[i].body) continue
       } catch (e) {
         console.error(e)
         continue
+      }
+
+      if (p[i].coverImageUrl) {
+        gmRequireImage(p[i].coverImageUrl).then(blob => {
+          zip.add(folder, `cover${p[i].coverImageUrl.slice(p[i].coverImageUrl.lastIndexOf('.'))}`, blob)
+        }).catch(e => {
+          console.error(`Failed to download: ${p[i].coverImageUrl}\n${e}`)
+        })
       }
       let { blocks, embedMap, imageMap, fileMap, files, images, text } = p[i].body
       let picIndex = 0
@@ -488,11 +498,11 @@
 
     // request post info
     let postData = await (await fetch(`${apiPostListUri}?creatorId=${creatorId}&limit=${limit}`, fetchOptions)).json()
-    creatorInfo.posts.push(...postData.body.items.filter(p => p.excerpt))
+    creatorInfo.posts.push(...postData.body.items)
     let nextPageUrl = postData.body.nextUrl
     while (nextPageUrl) {
       let nextData = await (await fetch(nextPageUrl, fetchOptions)).json()
-      creatorInfo.posts.push(...nextData.body.items.filter(p => p.excerpt))
+      creatorInfo.posts.push(...nextData.body.items)
       nextPageUrl = nextData.body.nextUrl
     }
     console.log(creatorInfo)
@@ -518,14 +528,17 @@
         overrideMimeType: 'application/octet-stream',
         responseType: 'blob',
         asynchrouns: true,
+        credentials: "include",
         onload: res => {
-          progressList[index] = 1
-          setProgress(amount)
+          if (index) {
+            progressList[index] = 1
+            setProgress(amount)
+          }
           resolve(res.response)
         },
         onprogress: res => {
           if (res.total < 0) return
-          progressList[index] = res.done / res.total
+          index && (progressList[index] = res.done / res.total)
           setProgress(amount)
         },
         onerror: () =>
@@ -535,15 +548,19 @@
             overrideMimeType: 'application/octet-stream',
             responseType: 'arraybuffer',
             onload: res => {
-              progressList[index] = 1
-              setProgress(amount)
+              if (index) {
+                progressList[index] = 1
+                setProgress(amount)
+              }
               resolve(new Blob([res.response]))
             },
             onprogress: res => {
-              progressList[index] = res.done / res.total
-              setProgress(amount)
+              if (index) {
+                progressList[index] = res.done / res.total
+                setProgress(amount)
+              }
             },
-            onerror: res => reject(res)
+            onerror: reject
           })
       })
     )
