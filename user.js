@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name         Fanbox Batch Downloader
 // @namespace    http://tampermonkey.net/
-// @version      0.800.1
+// @version      0.800.2
 // @description  Batch Download on creator, not post
 // @author       https://github.com/amarillys QQ 719862760
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.2.2/jszip.min.js
@@ -521,6 +521,7 @@
   }
 
   function gmRequireImage(url, index) {
+    let total = 0;
     return new Promise((resolve, reject) =>
       GM_xmlhttpRequest({
         method: 'GET',
@@ -530,15 +531,15 @@
         asynchrouns: true,
         credentials: "include",
         onload: res => {
-          if (index) {
+          if (index !== undefined) {
             progressList[index] = 1
             setProgress(amount)
           }
           resolve(res.response)
         },
         onprogress: res => {
-          if (res.total < 0) return
-          index && (progressList[index] = res.done / res.total)
+          total = Math.max(total, res.total)
+          index !== undefined && (progressList[index] = res.done / res.total)
           setProgress(amount)
         },
         onerror: () =>
@@ -548,14 +549,14 @@
             overrideMimeType: 'application/octet-stream',
             responseType: 'arraybuffer',
             onload: res => {
-              if (index) {
+              if (index !== undefined) {
                 progressList[index] = 1
                 setProgress(amount)
               }
               resolve(new Blob([res.response]))
             },
             onprogress: res => {
-              if (index) {
+              if (index !== undefined) {
                 progressList[index] = res.done / res.total
                 setProgress(amount)
               }

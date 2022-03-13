@@ -1,3 +1,11 @@
+### V0.800.2 - 20220313
+
+### Bug Fixed
+
++ fix a bug on progress bar.
+
+
+
 ### V0.800.1 - 20220312
 
 ### Bug Fixed
